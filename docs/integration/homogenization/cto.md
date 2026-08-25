@@ -1,6 +1,6 @@
 # `.ai.cto` (CTO Professor OS) — upgrade directions for the deploy skills
 
-**Status:** Ready · **Needs:** none · **Repo:** `/mnt/work/Projects/.ai.cto` (clean git, CI present)
+**Status:** Ready · **Needs:** none · **Repo:** `/mnt/work/Projects/pilo.ai.cto.logicbison` (clean git, CI present)
 
 Goal: make the deploy/verify skills produce targets whose `.cursorrules` discover all six sisters under both namings — same as the current framework. `.ai.cto` is the **closest** sibling: it already has a Frameworks registry in both `.cursorrules` and the template.
 
@@ -81,4 +81,4 @@ bash scripts/framework-verify.sh              # incl. .cursorrules ≡ template 
 - [ ] Nothing committed/staged
 
 ## Next action
-Run steps 1–2 + 5 inside `/mnt/work/Projects/.ai.cto`; steps 3–4 complete deploy parity.
+Run steps 1–2 + 5 inside `/mnt/work/Projects/pilo.ai.cto.logicbison`; steps 3–4 complete deploy parity.
