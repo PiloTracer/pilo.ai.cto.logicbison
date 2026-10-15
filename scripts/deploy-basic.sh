@@ -12,7 +12,8 @@
 #   bash scripts/deploy-basic.sh status [target-path]
 #   bash scripts/deploy-basic.sh verify [target-path]
 #   bash scripts/deploy-basic.sh <target-path> update
-#   bash scripts/deploy-basic.sh <target-path> --force
+#   bash scripts/deploy-basic.sh <target-path> --force confirm-overwrite-cursorrules
+#                                                           # overwrite .cursorrules (blocked without the token)
 #   TRAINER_CTO_SOURCE=/path bash scripts/deploy-basic.sh <target-path>
 #
 set -euo pipefail
@@ -53,13 +54,15 @@ if [[ "$(norm "${1:-}")" == "status" ]]; then
   exit 0
 fi
 
-RAW_TARGET="${1:?Usage: $0 [status|verify] <target-path> [force|update] (optional -- prefix on any mode)}"
+RAW_TARGET="${1:?Usage: $0 [status|verify] <target-path> [force|update] (optional -- prefix on any mode; force requires confirm-overwrite-cursorrules when .cursorrules exists)}"
 shift || true
 MODE="skip"
+CONFIRM_OVERWRITE=0
 while [[ $# -gt 0 ]]; do
   case "$(norm "$1")" in
     force)  MODE="force" ;;
     update) MODE="update" ;;
+    confirm-overwrite-cursorrules) CONFIRM_OVERWRITE=1 ;;
     verify) exec bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/verify-target.sh" "$RAW_TARGET" ;;
     *) echo "ERROR: unknown flag: $1" >&2; exit 1 ;;
   esac
@@ -190,7 +193,19 @@ if [[ -f "$CURS_DEST" ]]; then
   existing_source="$(grep -oE 'TRAINER_CTO_SOURCE=[^ ]*' "$CURS_DEST" | head -1 | cut -d= -f2- || true)"
 fi
 
+# Force overwrites wholesale — only after the operator names
+# `confirm-overwrite-cursorrules` (a replace destroys every sister framework's
+# block in the file — same guard as Agent OS / UI Design OS / Business OS).
 if [[ "$MODE" == "force" ]]; then
+  if [[ -f "$CURS_DEST" && "$CONFIRM_OVERWRITE" -ne 1 ]]; then
+    lost="$(grep -oE '(SOC_DESIGN_OS_BEGIN|UI_DESIGN_OS_BEGIN|FLUTTER_AGENT_OS_BEGIN|MLT_DESIGN_OS_BEGIN|Core Principles|Source resolution)' "$CURS_DEST" 2>/dev/null | sort -u | paste -sd, - | sed 's/,/, /g' || true)"
+    echo "  BLOCKED: force would replace .cursorrules wholesale ($(wc -l < "$CURS_DEST") lines)"
+    [[ -n "$lost" ]] && echo "    content that would be LOST: ${lost}"
+    echo "    to proceed, name the confirmation token explicitly:"
+    echo "      bash ${CTO_ROOT}/scripts/deploy-basic.sh ${DEST_ROOT} force confirm-overwrite-cursorrules"
+    echo "    otherwise use update (re-sync pointer in place) — the normal, non-destructive path."
+    exit 1
+  fi
   subst_cursorules > "$CURS_DEST"
   echo "  cursorules: wrote (TRAINER_CTO_SOURCE=$CTO_ROOT)"
 elif [[ -f "$CURS_DEST" ]]; then

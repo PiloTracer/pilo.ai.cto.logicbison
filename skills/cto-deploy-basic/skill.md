@@ -8,7 +8,7 @@ description: >-
 
 # cto-deploy-basic
 
-**Shell:** `bash <source>/scripts/deploy-basic.sh <target-path> [update|--update|force|--force]`  
+**Shell:** `bash <source>/scripts/deploy-basic.sh <target-path> [update|--update|force|--force]` — `force` overwrites the target `.cursorrules` wholesale and is **blocked without the explicit token** `confirm-overwrite-cursorrules` when the file exists (the script lists the content that would be lost and exits 1).
 **Status:** `bash <source>/scripts/deploy-basic.sh status [target-path]`  
 **Verify:** `bash <source>/scripts/deploy-basic.sh verify [target-path]`
 
@@ -29,7 +29,7 @@ description: >-
 
 1. **Target directory must already exist** (`mkdir -p` and, if it should be a repo, `git init` — done by the user or agent *before* this skill runs). This skill never creates the target repo itself; it only scaffolds the CTO Professor OS layer into an existing directory. If missing, stop and say so rather than erroring opaquely.
 2. Validate source has `templates/cursorrules.template` + `skills/`.
-3. Run `scripts/deploy-basic.sh <target-path> [update|force]` (agent may invoke shell directly).
+3. Run `scripts/deploy-basic.sh <target-path> [update|force]` (agent may invoke shell directly; pass `confirm-overwrite-cursorrules` after `force` when overwriting an existing `.cursorrules`).
 4. **Verification is automatic:** every deploy/update ends with `scripts/verify-target.sh`, which audits the target's `.cursorrules` — `TRAINER_CTO_SOURCE` set + reachable + matching the current source location, remaining `REPLACE:` tokens, sister-framework discovery (the six `.ai.<fw>` slots — legacy + family naming — plus the Agent OS anchor `.ai` / `pilo.ai.logicbison`), and the `.work.cto/` skeleton. FAIL items abort the deploy with exit 1; WARN items (e.g. unfilled `REPLACE:PROJECT_NAME`) are reported for the operator.
 5. Report pointer value, `.work.cto/` presence, verify result, next steps.
 6. If target already has Agent OS `.cursorrules` without `TRAINER_CTO_SOURCE`, **do not clobber** — merge Source-resolution + CTO skills table + professor Identity section, then re-run `verify`.
