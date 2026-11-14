@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.6.3 — 2026-11-14
+
+**`update` classifies merge candidates instead of dumping raw byte-diffs.** `deploy-basic.sh <target> update` printed `merge: <path>` for every file differing from a freshly substituted template. That over-reported: learner-authored memory (`.work.cto/context/*`, `plans/*`) and a hand-merged multi-framework `.cursorrules` are not drift, and acting on the list verbatim would erase assessment history and sibling-framework rules.
+
+- **Four verdicts** (`scripts/deploy-basic.sh`): `keep` (target is a superset), `review` (template prose changed, target carries local lines, no new structure), `MERGE` (template gained sections/columns **and** the target has local lines → schema merge, never a blind replace), `DRIFT` (template gained content, target has no local lines → safe replace). `MERGE`/`DRIFT` lines name the gained sections and table columns (capped at 3 + `+N more`), and a closing tally restates that classification is advisory — `update` still writes only the pointer.
+- **`.cursorrules` special-cased.** Heading/column diffing a CTO-only template against a hand-merged rules file is noise, so it is classified on CTO wiring + non-template line count; any local content draws the warning that `force` deletes sibling-framework blocks (why that path is token-gated).
+- **Structure detection.** New sections come from `^#{2,6}` headings absent in the target; new columns from table header rows (a header is a `|` row followed by a dash-bearing separator, so an empty data row `| | | | |` cannot leak a separator out as a header).
+- **Verifier.** `scripts/framework-verify.sh` gains an *Update-mode merge classification* section — 5 checks: clean fresh deploy, schema drift over learner rows → `MERGE` with the file left byte-identical, strict template subset → `DRIFT`, learner prose → not `MERGE`/`DRIFT`, hand-merged `.cursorrules` → `keep` + force warning. `bash scripts/framework-verify.sh` → `=== PASS ===`.
+- **Docs.** `skills/cto-deploy-basic/skill.md` gains § *Reading the `update` report* (verdict table + agent action); `.cursorrules` § Overwrite & merge updated, template kept byte-congruent.
+
 ## v0.6.2 — 2026-08-19
 
 **`cto-deploy-repo` removed.** The standalone clone/archive deploy path (`@cto-deploy-repo`, `scripts/deploy-repo.sh`) is gone. Thin-client (`@cto-deploy-basic`) and fat-client (`@cto-deploy-files`) remain the two supported deploy modes; cloning or backing up the framework itself is plain `git clone` / archive tooling, not a skill.

@@ -235,14 +235,90 @@ BOOTSTRAP_SKIP_CURSERRULES=1 REPO_ROOT="$DEST_ROOT" TRAINER_CTO_SOURCE="$CTO_ROO
 grep -E '(created:|skip )' /tmp/cto-deploy-basic-cto-bootstrap.$$.log | sed 's/^/  training: /' || true
 rm -f /tmp/cto-deploy-basic-cto-bootstrap.$$.log
 
+# --- update-mode classification -------------------------------------------------
+# A raw byte-diff over-reports: most differences between a template and a deployed
+# file are learner content, not template drift, and acting on the list verbatim
+# erases assessment history and sibling-framework rules. Classify each differing
+# pair instead, and name the structure the template gained:
+#   keep    target is a superset — nothing from the template is missing
+#   review  template prose changed, target carries local lines, no new structure
+#   MERGE   template gained sections/columns AND target has local lines → schema merge
+#   DRIFT   template gained content and the target has no local lines → safe replace
+
+# A header row is any table row immediately followed by a `|---|` separator row.
+# The separator must contain a dash: an empty data row (`| | | | |`) otherwise
+# matches and the separator above it leaks out as a "header".
+hdr_rows() {
+  awk 'function is_sep(l) { return l ~ /^\|[-: |]*-[-: |]*\|$/ }
+       prev ~ /^\|/ && is_sep($0) && !is_sep(prev) { print prev }
+       { prev=$0 }' "$1"
+}
+col_names() { hdr_rows "$1" | tr '|' '\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -v '^$' | sort -u; }
+sec_names() { { grep -E '^#{2,6} ' "$1" || true; } | sed 's/[[:space:]]*$//' | sort -u; }
+nonblank() { { grep -c '[^[:space:]]' || true; }; }
+# `paste -sd, ` cycles a multi-char delimiter list, so join on "," and expand after.
+join_commas() { paste -sd, - | sed 's/,/, /g'; }
+cap_list() { local n; n="$(awk -F, '{print NF}' <<< "$1")"; (( n > 3 )) && printf '%s, +%s more' "$(cut -d, -f1-3 <<< "$1")" "$((n - 3))" || printf '%s' "$1"; }
+
+n_keep=0; n_review=0; n_merge=0; n_drift=0
+
+classify_pair() {
+  local tpl="$1" dest="$2" label="$3"
+  local tpl_only dest_only new_secs new_cols detail
+  tpl_only="$(comm -23 <(sort -u "$tpl") <(sort -u "$dest") | nonblank)"
+  dest_only="$(comm -13 <(sort -u "$tpl") <(sort -u "$dest") | nonblank)"
+  new_secs="$(comm -23 <(sec_names "$tpl") <(sec_names "$dest") | join_commas)"
+  new_cols="$(comm -23 <(col_names "$tpl") <(col_names "$dest") | join_commas)"
+
+  detail=""
+  [[ -n "$new_secs" ]] && detail+="sections: $(cap_list "$new_secs")"
+  if [[ -n "$new_cols" ]]; then
+    [[ -n "$detail" ]] && detail+="; "
+    detail+="columns: $(cap_list "$new_cols")"
+  fi
+
+  if [[ "$tpl_only" -eq 0 ]]; then
+    printf '  keep:   %s — target ahead (%s local lines, nothing missing from template)\n' "$label" "$dest_only"
+    n_keep=$((n_keep + 1))
+  elif [[ -n "$detail" && "$dest_only" -gt 0 ]]; then
+    printf '  MERGE:  %s — template adds %s; target has %s local lines → schema merge, never a blind replace\n' "$label" "$detail" "$dest_only"
+    n_merge=$((n_merge + 1))
+  elif [[ -n "$detail" ]]; then
+    printf '  DRIFT:  %s — template adds %s; no local content → safe to replace from template\n' "$label" "$detail"
+    n_drift=$((n_drift + 1))
+  elif [[ "$dest_only" -eq 0 ]]; then
+    printf '  DRIFT:  %s — template prose changed (%s lines), no local content → safe to replace from template\n' "$label" "$tpl_only"
+    n_drift=$((n_drift + 1))
+  else
+    printf '  review: %s — template prose changed (%s lines) but target carries %s local lines and no new template structure\n' "$label" "$tpl_only" "$dest_only"
+    n_review=$((n_review + 1))
+  fi
+}
+
 if [[ "$MODE" == "update" ]]; then
   echo ""
-  echo "=== update merge candidates ==="
+  echo "=== update merge candidates (classified) ==="
   if [[ -f "$CURS_DEST" ]]; then
     tmp_cur="$(mktemp)"
-    subst_cursorules > "$tmp_cur"
-    if ! cmp -s "$tmp_cur" "$CURS_DEST"; then
-      echo "  merge: .cursorrules"
+    subst_cursorules > "$tmp_cur" 2>/dev/null
+    if cmp -s "$tmp_cur" "$CURS_DEST"; then
+      echo "  keep:   .cursorrules — identical to a fresh deploy from this source"
+      n_keep=$((n_keep + 1))
+    else
+      # A rules file is hand-merged across frameworks, so heading/column diffing against a
+      # CTO-only template is noise. Classify on CTO wiring + non-template content instead.
+      curs_local="$(comm -13 <(sort -u "$tmp_cur") <(sort -u "$CURS_DEST") | nonblank)"
+      if ! grep -q 'TRAINER_CTO_SOURCE=' "$CURS_DEST"; then
+        printf '  MERGE:  .cursorrules — no CTO wiring in this rules file → merge Source-resolution + CTO skills + Identity (skill protocol step 6); never clobber\n'
+        n_merge=$((n_merge + 1))
+      else
+        printf '  keep:   .cursorrules — hand-maintained rules file, CTO wiring present (%s non-template lines)\n' "$curs_local"
+        n_keep=$((n_keep + 1))
+        if [[ "$curs_local" -gt 0 ]]; then
+          printf '          ^ sibling-framework blocks live in this file — force deletes them (hence the token gate).\n'
+          printf '            Review CTO-section prose drift by hand: diff -u %s %s\n' "$TPL_CURS" "$CURS_DEST"
+        fi
+      fi
     fi
     rm -f "$tmp_cur"
   fi
@@ -251,10 +327,11 @@ if [[ "$MODE" == "update" ]]; then
     src="${TPL_WORK}/${f}.template"
     dest="${DEST_ROOT}/.work.cto/${f}"
     [[ -f "$src" && -f "$dest" ]] || continue
-    if ! cmp -s "$src" "$dest"; then
-      echo "  merge: .work.cto/${f}"
-    fi
+    cmp -s "$src" "$dest" && continue
+    classify_pair "$src" "$dest" ".work.cto/${f}"
   done
+  echo "  ---"
+  echo "  ${n_merge} schema merge, ${n_drift} safe replace, ${n_review} prose review, ${n_keep} keep — nothing above was modified"
 fi
 
 echo ""

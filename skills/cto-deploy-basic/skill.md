@@ -23,7 +23,7 @@ description: >-
 | `@cto-deploy-basic - /path/to/target` | outbound thin bootstrap |
 | `@cto-deploy-basic status` | read-only quick report |
 | `@cto-deploy-basic verify - /path/to/target` | deep wiring audit of the target's `.cursorrules` (pointer, REPLACE tokens, sister frameworks, `.work.cto/`) |
-| `@cto-deploy-basic - /path/to/target update` | re-sync pointer + merge candidates (target path always required; `--update` is the same thing) |
+| `@cto-deploy-basic - /path/to/target update` | re-sync pointer + classified merge candidates (target path always required; `--update` is the same thing) |
 
 ## Protocol
 
@@ -33,6 +33,21 @@ description: >-
 4. **Verification is automatic:** every deploy/update ends with `scripts/verify-target.sh`, which audits the target's `.cursorrules` — `TRAINER_CTO_SOURCE` set + reachable + matching the current source location, remaining `REPLACE:` tokens, sister-framework discovery (the six `.ai.<fw>` slots — legacy + family naming — plus the Agent OS anchor `.ai` / `pilo.ai.logicbison`), and the `.work.cto/` skeleton. FAIL items abort the deploy with exit 1; WARN items (e.g. unfilled `REPLACE:PROJECT_NAME`) are reported for the operator.
 5. Report pointer value, `.work.cto/` presence, verify result, next steps.
 6. If target already has Agent OS `.cursorrules` without `TRAINER_CTO_SOURCE`, **do not clobber** — merge Source-resolution + CTO skills table + professor Identity section, then re-run `verify`.
+
+## Reading the `update` report
+
+`update` prints `=== update merge candidates (classified) ===`. A raw byte-diff against a freshly substituted template over-reports — learner-authored memory and hand-merged rules files are not drift — so every differing file gets a verdict:
+
+| Verdict | Meaning | Agent action |
+|---------|---------|--------------|
+| `keep` | target is a superset of the template, or a hand-maintained `.cursorrules` with CTO wiring present | none |
+| `review` | template prose changed; target carries local lines and no new template structure | adopt the wording only if the operator wants it |
+| `MERGE` | template gained sections/columns **and** the target has local lines | schema merge — keep the learner's rows, adopt the new structure; never blind-replace |
+| `DRIFT` | template gained content and the target has no local lines | safe to replace from template |
+
+`MERGE` / `DRIFT` lines name the gained sections and table columns (capped at 3 + `+N more`). Classification is advisory: `update` itself writes only the pointer, so a `MERGE` verdict is work for the agent with operator approval, not something the script already did.
+
+`.cursorrules` is classified separately — on CTO wiring plus non-template line count, not headings — because a thin-client target's rules file usually carries sibling-framework blocks that a CTO-only template diff would report as missing. Any local content there draws the warning that `force` deletes those blocks.
 
 ## New target repo, start to finish
 

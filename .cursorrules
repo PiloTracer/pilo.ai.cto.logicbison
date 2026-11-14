@@ -178,7 +178,7 @@ TRAINER_CTO_SOURCE=REPLACE_BASICSOURCE
 
 ### Overwrite & merge
 - Prefer **no-overwrite** / append / merge. Never wholesale-replace `.cursorrules`, active programs, or HANDOFF without explicit request.
-- Deploy `update` lists merge candidates; agent merges rules-aware — does not blind-replace.
+- Deploy `update` classifies merge candidates (`keep` / `review` / `MERGE` / `DRIFT`) and names the structure the template gained; agent merges rules-aware — does not blind-replace.
 
 ### Git
 - NEVER `git commit` or `git push` unless the user explicitly requests it in the same message.

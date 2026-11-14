@@ -246,6 +246,53 @@ bash "$CTO_ROOT/scripts/verify-target.sh" "$SMOKE" &>/dev/null || die "verify-ta
 ok "update re-syncs a stale pointer and verify passes"
 rm -rf "$SMOKE"
 
+note "Update-mode merge classification (learner content must never read as drift)"
+SMOKEC="$(mktemp -d)"
+bash "$CTO_ROOT/scripts/deploy-basic.sh" "$SMOKEC" &>/dev/null || die "classification smoke deploy failed"
+OUT="$(bash "$CTO_ROOT/scripts/deploy-basic.sh" "$SMOKEC" update 2>/dev/null)"
+grep -q '0 schema merge, 0 safe replace' <<< "$OUT" || die "fresh deploy should report nothing to merge; got: $OUT"
+ok "fresh deploy classifies clean (no merge/drift candidates)"
+
+# Schema drift with learner rows present → MERGE, and the learner data must survive.
+COMP="${SMOKEC}/.work.cto/progress/COMPETENCY.md"
+printf '%s\n' '# Progress — competency map' '' \
+  '| Area | Baseline | Current | Evidence |' '|------|----------|---------|----------|' \
+  '| Role & leverage | 2 | 3 | learner drill artifact |' > "$COMP"
+BEFORE="$(md5sum "$COMP")"
+OUT="$(bash "$CTO_ROOT/scripts/deploy-basic.sh" "$SMOKEC" update 2>/dev/null)"
+grep -q 'MERGE:  .work.cto/progress/COMPETENCY.md' <<< "$OUT" \
+  || die "template-gained section + learner rows should classify as MERGE; got: $OUT"
+grep -q 'Movement log' <<< "$OUT" || die "MERGE line should name the gained section; got: $OUT"
+grep -q 'Cap lifted?' <<< "$OUT" || die "MERGE line should name the gained column; got: $OUT"
+[[ "$BEFORE" == "$(md5sum "$COMP")" ]] || die "update modified a learner file it only meant to classify"
+ok "schema drift over learner content → MERGE, file left untouched"
+
+# Same file with no local content → DRIFT (safe replace), still not auto-applied.
+head -5 "$CTO_ROOT/templates/training/progress/COMPETENCY.md.template" > "$COMP"
+OUT="$(bash "$CTO_ROOT/scripts/deploy-basic.sh" "$SMOKEC" update 2>/dev/null)"
+grep -q 'DRIFT:  .work.cto/progress/COMPETENCY.md' <<< "$OUT" \
+  || die "template superset with no local lines should classify as DRIFT; got: $OUT"
+ok "no local content → DRIFT (safe replace, advisory only)"
+
+# Learner-filled file with no new template structure must not read as drift.
+printf '%s\n' '# Unknowns' '' '- learner-recorded unknown that no template contains' >> \
+  "${SMOKEC}/.work.cto/plans/UNKNOWNS.md"
+OUT="$(bash "$CTO_ROOT/scripts/deploy-basic.sh" "$SMOKEC" update 2>/dev/null)"
+if grep -qE '(MERGE|DRIFT):  .work.cto/plans/UNKNOWNS.md' <<< "$OUT"; then
+  die "learner prose with no gained structure must not classify as MERGE/DRIFT; got: $OUT"
+else
+  ok "learner prose → review, not MERGE/DRIFT"
+fi
+
+# A rules file carrying non-CTO content must never be offered as a merge candidate.
+printf '%s\n' '' '# Business OS Identity' 'foreign framework block' >> "${SMOKEC}/.cursorrules"
+OUT="$(bash "$CTO_ROOT/scripts/deploy-basic.sh" "$SMOKEC" update 2>/dev/null)"
+grep -q 'keep:   .cursorrules' <<< "$OUT" || die "hand-merged rules file should classify as keep; got: $OUT"
+grep -q 'sibling-framework blocks live in this file' <<< "$OUT" \
+  || die "hand-merged rules file should carry the force-deletes-siblings warning; got: $OUT"
+ok "hand-merged .cursorrules → keep + force warning (never a blind merge)"
+rm -rf "$SMOKEC"
+
 note "Fat deploy smoke (framework assets must travel)"
 SMOKEF="$(mktemp -d)"
 if bash "$CTO_ROOT/scripts/deploy-files.sh" "$SMOKEF" &>/dev/null; then

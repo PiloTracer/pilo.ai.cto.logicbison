@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/PiloTracer/pilo-trainer-cto?display_name=tag&sort=semver)](https://github.com/PiloTracer/pilo-trainer-cto/releases)
-[![Version](https://img.shields.io/badge/version-0.6.2-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.6.3-blue.svg)](CHANGELOG.md)
 
 > **Expert CTO professor / mentor** as a portable operating system: gated skills, binding standards, standard + custom programs, and learner memory under `.work.cto/`. Continuous training, consultancy, and source-backed updates — next to your real work.
 
